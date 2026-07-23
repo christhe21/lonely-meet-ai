@@ -7,15 +7,15 @@ pydantic-settings>=2.0
 # STT
 deepgram-sdk>=3.0.0
 
-# LLM
+# LLM – openai client works for OpenAI *and* any OpenAI-compatible local server (Ollama, LM Studio, etc.)
 openai>=1.0.0
-# anthropic>=0.18.0
-# google-generativeai
+# anthropic>=0.18.0          # only if you use Claude
+# google-generativeai        # only if you use Gemini
 
 # TTS
 elevenlabs>=1.0.0
 
-# Audio helpers (platform dependent)
+# Audio helpers (platform dependent – install as needed)
 # sounddevice
 # pyaudio
 # numpy
