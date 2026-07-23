@@ -1,6 +1,6 @@
 # Lonely Meet AI – Project Specification
 
-**Version:** 0.1.0  
+**Version:** 0.1.1  
 **Status:** Planning / Scaffolding  
 **Last Updated:** 2026-07-24
 
@@ -17,11 +17,13 @@ User joins a Google Meet, starts the bot, and practices a presentation alone. Wh
 - Must detect “lonely” state via DOM scraping of participant count.
 - Low-latency audio pipeline required for natural conversation feel.
 - Audio must be injected as if coming from the bot’s microphone.
+- **Must support both cloud and fully local LLMs** (Ollama, LM Studio, etc.).
 
 ### High-Level Value
 - Practice presentations with realistic, persona-driven feedback.
 - Extensible to other meeting platforms later.
 - Educational / productivity tool for solo rehearsal.
+- Privacy-friendly: can run the Brain entirely offline.
 
 ---
 
@@ -31,11 +33,11 @@ User joins a Google Meet, starts the bot, and practices a presentation alone. Wh
 |-----------|----------------|--------------|-------|
 | **Joiner** | Launch headless browser, navigate to Meet link, click Join, stay in call | Playwright (Python or Node) | Managed alternative: Recall.ai / Meeting Baas |
 | **Lonely Trigger / Participant Detector** | Continuously poll DOM for participant count; activate listening only when count == 1 for N seconds | Playwright page.evaluate / MutationObserver | Selector example: `.uGOf1d` (fragile – needs monitoring) |
-| **Ears (Speech-to-Text)** | Capture audio stream or scrape live captions → real-time transcript | Deepgram / Gladia / Google Live Caption scrape | Prefer streaming STT for lower latency |
-| **Brain (LLM + Persona)** | Receive final transcript segments, generate persona-aligned response | GPT-4o / Claude 3.5 / Gemini Flash + system prompt | Streaming response preferred |
-| **Voice (TTS + Injection)** | Convert LLM text → audio, route audio into the browser’s virtual microphone | ElevenLabs / OpenAI TTS + VB-Cable / Web Audio API / virtual sink | Critical path for “speaking” |
-| **Orchestrator** | State machine coordinating the above; handles silence detection, turn-taking, activation/deactivation | Custom Python/Node service | Central control loop |
-| **Config & Persona Store** | Meeting link, persona prompts, thresholds, API keys | YAML / .env + simple DB or files | Hot-reloadable personas |
+| **Ears (Speech-to-Text)** | Capture audio stream or scrape live captions → real-time transcript | Deepgram / Gladia / Google Live Caption scrape | Prefer streaming STT for lower latency. Future: local Whisper |
+| **Brain (LLM + Persona)** | Receive final transcript segments, generate persona-aligned response | **Local first**: Ollama / any OpenAI-compatible. Also OpenAI, Anthropic | See `docs/LOCAL_LLM_SETUP.md` |
+| **Voice (TTS + Injection)** | Convert LLM text → audio, route audio into the browser’s virtual microphone | ElevenLabs / OpenAI TTS + VB-Cable / Web Audio API / virtual sink | Critical path for “speaking”. Future: local Piper/Coqui |
+| **Orchestrator** | State machine coordinating the above; handles silence detection, turn-taking, activation/deactivation | Custom Python service | Central control loop |
+| **Config & Persona Store** | Meeting link, persona prompts, thresholds, API keys, LLM provider | `.env` + YAML personas | Hot-reloadable personas |
 | **Logging & Observability** | Transcript history, latency metrics, error tracking | Structured logs + optional dashboard | |
 
 ### Optional / Future Components
@@ -43,6 +45,7 @@ User joins a Google Meet, starts the bot, and practices a presentation alone. Wh
 - Visual avatar / camera injection (beyond scope of v1)
 - Recording of sessions for review
 - Web dashboard for controlling the bot
+- Fully offline stack (local Whisper STT + local TTS)
 
 ---
 
@@ -66,6 +69,9 @@ User joins a Google Meet, starts the bot, and practices a presentation alone. Wh
                          │
                          ▼
               [Brain] ← transcript + persona system prompt
+                    │
+                    ├── Local: Ollama / LM Studio / openai-compatible
+                    └── Cloud: OpenAI / Anthropic
                          │
                          ▼
               [LLM] → response text
@@ -134,14 +140,28 @@ Place diagrams in `/docs/diagrams/`:
 ## 6. Technology Stack Recommendations
 
 **Core Runtime**
-- Language: Python 3.11+ (or Node.js 20+)
+- Language: Python 3.11+
 - Browser automation: Playwright
 - Async: asyncio / Playwright async API
 
-**AI Services**
-- STT: Deepgram Nova-2 (or Gladia)
-- LLM: OpenAI GPT-4o / Anthropic Claude 3.5 Sonnet / Google Gemini 1.5 Flash
-- TTS: ElevenLabs (voice cloning / high quality) or OpenAI TTS
+**AI Services – LLM (Brain)**  
+**First-class local support:**
+- Ollama (recommended) → `http://localhost:11434/v1`
+- LM Studio, vLLM, llama.cpp server, any OpenAI-compatible endpoint
+
+Cloud still fully supported:
+- OpenAI (GPT-4o, etc.)
+- Anthropic (Claude 3.5 / 4)
+
+See **`docs/LOCAL_LLM_SETUP.md`** for exact setup steps.
+
+**STT (Ears)**
+- Primary: Deepgram Nova-2 (or Gladia)
+- Future local: faster-whisper / whisper.cpp
+
+**TTS (Voice)**
+- Primary: ElevenLabs or OpenAI TTS
+- Future local: Piper, Coqui, XTTS
 
 **Audio Infrastructure**
 - Virtual audio: VB-Audio Virtual Cable (Windows) / BlackHole (macOS) / PulseAudio null sink (Linux)
@@ -151,8 +171,8 @@ Place diagrams in `/docs/diagrams/`:
 - Recall.ai or Meeting Baas for the “Joiner + audio websocket” layer
 
 **Config**
-- pydantic-settings + .env
-- YAML persona definitions
+- `.env` (see `.env.example`)
+- YAML persona definitions in `docs/personas/`
 
 ---
 
@@ -163,6 +183,7 @@ lonely-meet-ai/
 ├── README.md
 ├── SPEC.md                     ← this file
 ├── docs/
+│   ├── LOCAL_LLM_SETUP.md      ← how to run with Ollama / LM Studio
 │   ├── diagrams/               ← architecture & sequence diagrams
 │   └── personas/               ← example persona prompts
 ├── src/
@@ -181,20 +202,20 @@ lonely-meet-ai/
 │   │   └── caption_scraper.py
 │   ├── brain/
 │   │   ├── __init__.py
-│   │   └── llm_persona.py
+│   │   └── llm_persona.py      ← multi-provider (local + cloud)
 │   ├── voice/
 │   │   ├── __init__.py
 │   │   ├── tts_elevenlabs.py
 │   │   └── audio_injector.py
 │   └── config/
 │       ├── __init__.py
-│       └── settings.py
+│       └── settings.py         ← LLM_PROVIDER, LLM_BASE_URL, etc.
 ├── tests/
 │   └── ...
 ├── scripts/
-│   └── setup_virtual_audio.sh
+│   └── setup_virtual_audio.md
 ├── .env.example
-├── requirements.txt / pyproject.toml
+├── requirements.txt
 └── docker/                     ← optional later
 ```
 
@@ -215,22 +236,22 @@ lonely-meet-ai/
 | Risk | Mitigation |
 |------|------------|
 | Google Meet DOM changes break selectors | Prefer managed services; keep selector map versioned; monitoring alerts |
-| High latency ruins conversation feel | Stream STT + LLM + TTS; measure end-to-end latency budget (<2–3 s ideal) |
+| High latency ruins conversation feel | Stream STT + LLM + TTS; measure end-to-end latency budget (<2–3 s ideal). Prefer small local models |
 | Audio injection reliability across OS | Document platform-specific virtual audio setup; provide scripts |
-| Cost of continuous STT/TTS | Only activate when lonely; use silence detection aggressively |
+| Cost of continuous STT/TTS | Only activate when lonely; use silence detection aggressively; local LLM eliminates LLM cost |
 | Legal / ToS | Personal use / practice tool; do not claim official integration |
 
 ---
 
 ## 10. Next Immediate Steps
 
-1. Scaffold the repository structure (empty modules + this SPEC).
+1. ✅ Scaffold the repository structure + this SPEC + local LLM support.
 2. Implement minimal Playwright joiner that can enter a Meet and stay connected.
 3. Implement participant count polling + lonely state machine.
-4. Add Deepgram streaming STT path.
-5. Wire a simple LLM persona and print responses (no TTS yet).
+4. Add Deepgram streaming STT path (or caption scraper for quick testing).
+5. Wire `LLMPersona` (already supports local) and print responses (no TTS yet).
 6. Solve audio injection on one platform (start with Linux or macOS).
-7. End-to-end demo with a fixed persona.
+7. End-to-end demo with a fixed persona + local Ollama model.
 
 ---
 
