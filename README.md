@@ -6,6 +6,8 @@ A headless bot joins your meeting, stays silent while others are present, and ac
 
 > Example persona: Gordon Ramsay grilling you about your presentation.
 
+**Supports both cloud LLMs and fully local models** (Ollama, LM Studio, any OpenAI-compatible server).
+
 ## Status
 
 **Scaffolding / Spec complete.** Implementation not started.
@@ -17,6 +19,7 @@ See **[SPEC.md](./SPEC.md)** for the full architecture, components, sequences, r
 | Document | Description |
 |----------|-------------|
 | [SPEC.md](./SPEC.md) | Full project specification |
+| [docs/LOCAL_LLM_SETUP.md](./docs/LOCAL_LLM_SETUP.md) | **How to run with Ollama / LM Studio** |
 | [docs/personas/](./docs/personas/) | Example system prompts |
 | [docs/diagrams/](./docs/diagrams/) | Architecture & sequence diagrams (to be added) |
 | [.env.example](./.env.example) | Required environment variables |
@@ -26,23 +29,37 @@ See **[SPEC.md](./SPEC.md)** for the full architecture, components, sequences, r
 1. **Joiner** – Playwright (or managed service) joins the Meet as a headless participant  
 2. **Lonely Trigger** – DOM participant-count detector  
 3. **Ears** – Streaming STT (Deepgram) or caption scrape  
-4. **Brain** – LLM + persona system prompt  
+4. **Brain** – LLM + persona (local Ollama / OpenAI / Anthropic)  
 5. **Voice** – TTS + virtual microphone injection  
 6. **Orchestrator** – State machine coordinating everything
+
+## Local LLM (Recommended for privacy & zero cost)
+
+```bash
+# Install Ollama → https://ollama.com
+ollama pull llama3.1
+
+# Then in .env:
+LLM_PROVIDER=ollama
+LLM_MODEL=llama3.1
+LLM_BASE_URL=http://localhost:11434/v1
+```
+
+Full instructions: **[docs/LOCAL_LLM_SETUP.md](./docs/LOCAL_LLM_SETUP.md)**
 
 ## Planned Stack
 
 - Playwright
-- Deepgram (STT)
-- OpenAI / Claude / Gemini (LLM)
-- ElevenLabs (TTS)
+- Deepgram (STT) – local Whisper later
+- **Ollama / any OpenAI-compatible** or OpenAI / Claude (LLM)
+- ElevenLabs (TTS) – local Piper later
 - Virtual audio cable / Web Audio injection
 
 ## Getting Started (once implemented)
 
 ```bash
 cp .env.example .env
-# fill keys
+# fill keys / set LLM_PROVIDER=ollama
 pip install -r requirements.txt
 playwright install
 python -m src.main --meet-url "https://meet.google.com/..." --persona gordon-ramsay
